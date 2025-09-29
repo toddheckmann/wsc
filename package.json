@@ -1,0 +1,14 @@
+{
+  "name": "wsc-tip-relay",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^4.27.2",
+    "@fastify/websocket": "^8.3.1",
+    "@fastify/formbody": "^7.4.0",
+    "ws": "^8.17.0",
+    "undici": "^6.19.8"
+  }
+}

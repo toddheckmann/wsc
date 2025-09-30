@@ -3,7 +3,7 @@ import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT || 5050);
 
-// Basic HTTP for health checks
+// --- HTTP: health check ---
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
@@ -13,7 +13,7 @@ const server = http.createServer((req, res) => {
   res.end("Not Found");
 });
 
-// WebSocket server (no deps) – accept only /media-stream
+// --- WS: accept only /media-stream ---
 const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
 server.on("upgrade", (req, socket, head) => {
@@ -28,24 +28,14 @@ server.on("upgrade", (req, socket, head) => {
 
 wss.on("connection", (ws, req) => {
   console.log("✅ WS client connected:", req.url);
-
-  // Keepalive
   const pinger = setInterval(() => {
     if (ws.readyState === ws.OPEN) ws.ping();
   }, 15000);
-
   ws.on("message", (msg) => {
     console.log("↔️  got message len:", msg?.length || 0);
-    // Echo back a tiny JSON so you can see it in the browser if using a test client
-    try {
-      ws.send(JSON.stringify({ ok: true, echoBytes: msg.length || 0 }));
-    } catch {}
+    try { ws.send(JSON.stringify({ ok: true, echoBytes: msg.length || 0 })); } catch {}
   });
-
-  ws.on("close", () => {
-    clearInterval(pinger);
-    console.log("❌ WS client closed");
-  });
+  ws.on("close", () => { clearInterval(pinger); console.log("❌ WS client closed"); });
 });
 
 server.listen(PORT, "0.0.0.0", () => {

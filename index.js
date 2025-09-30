@@ -33,7 +33,7 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-// --- Bridge Twilio <-> OpenAI Realtime with buffering + commits ---
+// --- Bridge Twilio <-> OpenAI Realtime with buffering + size-based commits ---
 wss.on("connection", (twilioWS) => {
   console.log("✅ Twilio connected to /media-stream");
 
@@ -49,23 +49,17 @@ wss.on("connection", (twilioWS) => {
 
   let streamSid = null;
   let oaReady = false;
-  const pending = [];                // queued base64 PCMU frames
-  let haveUncommittedAudio = false;
-  let commitTimer = null;
+  const pending = []; // queued base64 PCMU frames until session is configured
 
-  const startCommitTimer = () => {
-    if (commitTimer) return;
-    commitTimer = setInterval(() => {
-      if (haveUncommittedAudio && oaWS.readyState === WebSocket.OPEN) {
-        oaWS.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-        haveUncommittedAudio = false;
-      }
-    }, 700);
-  };
+  // commit only after ~100ms of audio (≈800 bytes @ 8kHz G.711 μ-law)
+  let bytesSinceCommit = 0;
+  const COMMIT_THRESHOLD = 800;
 
-  const stopCommitTimer = () => {
-    if (commitTimer) clearInterval(commitTimer);
-    commitTimer = null;
+  const tryCommit = () => {
+    if (bytesSinceCommit >= COMMIT_THRESHOLD && oaWS.readyState === WebSocket.OPEN) {
+      oaWS.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+      bytesSinceCommit = 0;
+    }
   };
 
   const sendToOA = (b64) => {
@@ -73,32 +67,42 @@ wss.on("connection", (twilioWS) => {
       pending.push(b64);
       return;
     }
+    // append audio
     oaWS.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
-    haveUncommittedAudio = true;
-    startCommitTimer();
+    // count raw bytes and commit when we’ve got enough
+    try {
+      bytesSinceCommit += Buffer.from(b64, "base64").length;
+    } catch {}
+    tryCommit();
   };
 
   oaWS.on("open", () => {
     console.log("✅ OpenAI Realtime connected");
     // Configure session BEFORE any response
-    oaWS.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        instructions:
-          "You are the Westside Current tipline reporter. Collect who/what/when/where/how, ask 2–3 follow-ups, avoid legal advice, then read back a one-paragraph summary for confirmation.",
-        modalities: ["audio","text"],          // <- must include text
-        turn_detection: { type: "server_vad" },
-        input_audio_format:  "g711_ulaw",      // <- Twilio PCMU
-        output_audio_format: "g711_ulaw",      // <- Twilio PCMU
-        voice: "alloy"
-      }
-    }));
+    oaWS.send(
+      JSON.stringify({
+        type: "session.update",
+        session: {
+          instructions:
+            "You are the Westside Current tipline reporter. Collect who/what/when/where/how, ask 2–3 follow-ups, avoid legal advice, then read back a one-paragraph summary for confirmation.",
+          modalities: ["audio", "text"],          // must include text
+          turn_detection: { type: "server_vad" },
+          input_audio_format: "g711_ulaw",        // Twilio PCMU
+          output_audio_format: "g711_ulaw",       // Twilio PCMU
+          voice: "alloy",
+        },
+      })
+    );
   });
 
   // Log non-audio events to surface errors/state
   oaWS.on("message", (buf) => {
     let msg;
-    try { msg = JSON.parse(buf.toString()); } catch { return; }
+    try {
+      msg = JSON.parse(buf.toString());
+    } catch {
+      return;
+    }
 
     if (msg.type && msg.type !== "response.output_audio.delta") {
       console.log("OA evt:", msg.type);
@@ -107,12 +111,17 @@ wss.on("connection", (twilioWS) => {
 
     if (msg.type === "session.updated") {
       oaReady = true;
+
       // Flush any queued frames now that session is configured
       while (pending.length && oaWS.readyState === WebSocket.OPEN) {
         const frame = pending.shift();
         oaWS.send(JSON.stringify({ type: "input_audio_buffer.append", audio: frame }));
-        haveUncommittedAudio = true;
+        try {
+          bytesSinceCommit += Buffer.from(frame, "base64").length;
+        } catch {}
       }
+      tryCommit();
+
       // Kick off an initial greeting AFTER session is fully set
       oaWS.send(JSON.stringify({ type: "response.create" }));
       return;
@@ -121,11 +130,13 @@ wss.on("connection", (twilioWS) => {
     // Model speaking → send frames back to Twilio
     if (msg.type === "response.output_audio.delta" && msg.delta) {
       if (streamSid) {
-        twilioWS.send(JSON.stringify({
-          event: "media",
-          streamSid,
-          media: { payload: msg.delta } // base64 PCMU
-        }));
+        twilioWS.send(
+          JSON.stringify({
+            event: "media",
+            streamSid,
+            media: { payload: msg.delta }, // base64 PCMU
+          })
+        );
       }
       return;
     }
@@ -138,9 +149,15 @@ wss.on("connection", (twilioWS) => {
       if (data.event === "start") {
         streamSid = data.start.streamSid;
         console.log("Twilio stream started:", streamSid);
+        bytesSinceCommit = 0; // reset for new stream
       } else if (data.event === "media" && data.media?.payload) {
         sendToOA(data.media.payload);
       } else if (data.event === "stop") {
+        // optional: flush if we have >=100ms pending
+        if (bytesSinceCommit >= COMMIT_THRESHOLD && oaWS.readyState === WebSocket.OPEN) {
+          oaWS.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+          bytesSinceCommit = 0;
+        }
         if (oaWS.readyState === WebSocket.OPEN) oaWS.close(1000, "call ended");
       }
     } catch (e) {
@@ -150,12 +167,10 @@ wss.on("connection", (twilioWS) => {
 
   // Cleanup
   twilioWS.on("close", () => {
-    stopCommitTimer();
     if (oaWS.readyState === WebSocket.OPEN) oaWS.close(1000, "twilio socket closed");
     console.log("❌ Twilio disconnected");
   });
   oaWS.on("close", () => {
-    stopCommitTimer();
     console.log("❌ OpenAI Realtime closed");
   });
   oaWS.on("error", (e) => console.error("OpenAI WS error:", e));
@@ -164,3 +179,4 @@ wss.on("connection", (twilioWS) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Relay listening on ${PORT}`);
 });
+

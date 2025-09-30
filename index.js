@@ -42,14 +42,13 @@ wss.on("connection", (twilioWS) => {
     {
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "OpenAI-Beta": "realtime=v1"
-      }
+        "OpenAI-Beta": "realtime=v1",
+      },
     }
   );
 
   let streamSid = null;
   let oaReady = false;
-  let sessionConfigured = false;
   const pending = [];                // queued base64 PCMU frames
   let haveUncommittedAudio = false;
   let commitTimer = null;
@@ -81,16 +80,16 @@ wss.on("connection", (twilioWS) => {
 
   oaWS.on("open", () => {
     console.log("✅ OpenAI Realtime connected");
-    // Configure session (PCMU μ-law @ 8k) BEFORE any response
+    // Configure session BEFORE any response
     oaWS.send(JSON.stringify({
       type: "session.update",
       session: {
         instructions:
           "You are the Westside Current tipline reporter. Collect who/what/when/where/how, ask 2–3 follow-ups, avoid legal advice, then read back a one-paragraph summary for confirmation.",
-        modalities: ["audio","text"],
+        modalities: ["audio","text"],          // <- must include text
         turn_detection: { type: "server_vad" },
-        input_audio_format:  { type: "audio/pcmu", sample_rate_hz: 8000 },
-        output_audio_format: { type: "audio/pcmu", sample_rate_hz: 8000 },
+        input_audio_format:  "g711_ulaw",      // <- Twilio PCMU
+        output_audio_format: "g711_ulaw",      // <- Twilio PCMU
         voice: "alloy"
       }
     }));
@@ -107,7 +106,6 @@ wss.on("connection", (twilioWS) => {
     }
 
     if (msg.type === "session.updated") {
-      sessionConfigured = true;
       oaReady = true;
       // Flush any queued frames now that session is configured
       while (pending.length && oaWS.readyState === WebSocket.OPEN) {

@@ -1,3 +1,39 @@
+import http from "http";
+import { WebSocketServer, WebSocket } from "ws";
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
+const PORT = Number(process.env.PORT || 5050);
+
+if (!OPENAI_API_KEY) {
+  console.error("❌ Set OPENAI_API_KEY");
+  process.exit(1);
+}
+
+// --- HTTP: health + simple 404 ---
+const server = http.createServer((req, res) => {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, service: "wsc-tip-relay" }));
+  }
+  res.writeHead(404, { "content-type": "text/plain" });
+  res.end("Not Found");
+});
+
+// --- WS server for Twilio <Connect><Stream> ---
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+
+server.on("upgrade", (req, socket, head) => {
+  if (!req.url || !req.url.startsWith("/media-stream")) {
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit("connection", ws, req);
+  });
+});
+
+// --- Bridge Twilio <-> OpenAI Realtime with buffering + commits ---
 wss.on("connection", (twilioWS) => {
   console.log("✅ Twilio connected to /media-stream");
 
@@ -6,7 +42,7 @@ wss.on("connection", (twilioWS) => {
     {
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "OpenAI-Beta": "realtime=v1"          // 👈 add this
+        "OpenAI-Beta": "realtime=v1"
       }
     }
   );
@@ -14,7 +50,7 @@ wss.on("connection", (twilioWS) => {
   let streamSid = null;
   let oaReady = false;
   let sessionConfigured = false;
-  const pending = [];
+  const pending = [];                // queued base64 PCMU frames
   let haveUncommittedAudio = false;
   let commitTimer = null;
 
@@ -22,10 +58,10 @@ wss.on("connection", (twilioWS) => {
     if (commitTimer) return;
     commitTimer = setInterval(() => {
       if (haveUncommittedAudio && oaWS.readyState === WebSocket.OPEN) {
-        oaWS.send(JSON.stringify({ type: "input_audio_buffer.commit" })); // 👈 commit so model processes
+        oaWS.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
         haveUncommittedAudio = false;
       }
-    }, 700); // gentle cadence
+    }, 700);
   };
 
   const stopCommitTimer = () => {
@@ -60,12 +96,11 @@ wss.on("connection", (twilioWS) => {
     }));
   });
 
-  // Log all messages to catch errors / state
+  // Log non-audio events to surface errors/state
   oaWS.on("message", (buf) => {
     let msg;
     try { msg = JSON.parse(buf.toString()); } catch { return; }
 
-    // Helpful debug:
     if (msg.type && msg.type !== "response.output_audio.delta") {
       console.log("OA evt:", msg.type);
       if (msg.error) console.log("OA error:", msg.error);
@@ -74,13 +109,13 @@ wss.on("connection", (twilioWS) => {
     if (msg.type === "session.updated") {
       sessionConfigured = true;
       oaReady = true;
-      // Flush queued frames
+      // Flush any queued frames now that session is configured
       while (pending.length && oaWS.readyState === WebSocket.OPEN) {
         const frame = pending.shift();
         oaWS.send(JSON.stringify({ type: "input_audio_buffer.append", audio: frame }));
         haveUncommittedAudio = true;
       }
-      // Say hello once the session is truly configured
+      // Kick off an initial greeting AFTER session is fully set
       oaWS.send(JSON.stringify({ type: "response.create" }));
       return;
     }
@@ -105,4 +140,29 @@ wss.on("connection", (twilioWS) => {
       if (data.event === "start") {
         streamSid = data.start.streamSid;
         console.log("Twilio stream started:", streamSid);
-      } else if (data.event === "media" && data.media?.payload)
+      } else if (data.event === "media" && data.media?.payload) {
+        sendToOA(data.media.payload);
+      } else if (data.event === "stop") {
+        if (oaWS.readyState === WebSocket.OPEN) oaWS.close(1000, "call ended");
+      }
+    } catch (e) {
+      console.error("Twilio message parse error:", e);
+    }
+  });
+
+  // Cleanup
+  twilioWS.on("close", () => {
+    stopCommitTimer();
+    if (oaWS.readyState === WebSocket.OPEN) oaWS.close(1000, "twilio socket closed");
+    console.log("❌ Twilio disconnected");
+  });
+  oaWS.on("close", () => {
+    stopCommitTimer();
+    console.log("❌ OpenAI Realtime closed");
+  });
+  oaWS.on("error", (e) => console.error("OpenAI WS error:", e));
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Relay listening on ${PORT}`);
+});

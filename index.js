@@ -87,7 +87,7 @@ wss.on("connection", (twilioWS) => {
       session: {
         instructions:
           "You are the Westside Current tipline reporter. Collect who/what/when/where/how, ask 2–3 follow-ups, avoid legal advice, then read back a one-paragraph summary for confirmation.",
-        modalities: ["audio"],
+        modalities: ["audio","text"],
         turn_detection: { type: "server_vad" },
         input_audio_format:  { type: "audio/pcmu", sample_rate_hz: 8000 },
         output_audio_format: { type: "audio/pcmu", sample_rate_hz: 8000 },

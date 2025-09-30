@@ -1,4 +1,3 @@
-BEGIN_INDEX_JS
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 
@@ -45,7 +44,7 @@ wss://api.openai.com/v1/realtime?model=${encodeURIComponent(MODEL)},
 
 let streamSid = null;
 let oaReady = false;
-const pending = []; // queue base64 PCMU frames until OA is open
+const pending = []; // base64 PCMU frames queued until OA is open
 
 const sendToOA = (b64) => {
 if (!oaReady || oaWS.readyState !== WebSocket.OPEN) {
@@ -57,8 +56,7 @@ oaWS.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
 
 oaWS.on("open", () => {
 console.log("✅ OpenAI Realtime connected");
-oaWS.send(
-JSON.stringify({
+oaWS.send(JSON.stringify({
 type: "session.update",
 session: {
 instructions:
@@ -69,15 +67,14 @@ input_audio_format: { type: "audio/pcmu", sample_rate_hz: 8000 },
 output_audio_format: { type: "audio/pcmu", sample_rate_hz: 8000 },
 voice: "alloy"
 }
-})
-);
+}));
 oaReady = true;
 while (pending.length && oaWS.readyState === WebSocket.OPEN) {
 const frame = pending.shift();
 oaWS.send(JSON.stringify({ type: "input_audio_buffer.append", audio: frame }));
 }
-// Optionally kick off an initial reply:
-// oaWS.send(JSON.stringify({ type: "response.create" }));
+// Optional: kick off an initial greeting line
+oaWS.send(JSON.stringify({ type: "response.create" }));
 });
 
 // OpenAI -> caller audio
@@ -85,13 +82,11 @@ oaWS.on("message", (buf) => {
 try {
 const msg = JSON.parse(buf.toString());
 if (msg.type === "response.output_audio.delta" && msg.delta) {
-twilioWS.send(
-JSON.stringify({
+twilioWS.send(JSON.stringify({
 event: "media",
 streamSid,
 media: { payload: msg.delta } // base64 PCMU
-})
-);
+}));
 }
 } catch (e) {
 console.error("OpenAI message parse error:", e);
@@ -127,4 +122,3 @@ oaWS.on("error", (e) => console.error("OpenAI WS error:", e));
 server.listen(PORT, "0.0.0.0", () => {
 console.log(🚀 Relay listening on ${PORT});
 });
-END_INDEX_JS

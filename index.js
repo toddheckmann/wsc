@@ -51,9 +51,9 @@ wss.on("connection", (twilioWS) => {
   let oaReady = false;
   const pending = []; // queued base64 PCMU frames until session is configured
 
-  // commit only after ~100ms of audio (≈800 bytes @ 8kHz G.711 μ-law)
+  // commit only after ~100ms of audio (≈1600 bytes after decode at 8kHz PCM16)
   let bytesSinceCommit = 0;
-  const COMMIT_THRESHOLD = 800;
+  const COMMIT_THRESHOLD = 1600;
 
   const tryCommit = () => {
     if (bytesSinceCommit >= COMMIT_THRESHOLD && oaWS.readyState === WebSocket.OPEN) {
@@ -179,4 +179,3 @@ wss.on("connection", (twilioWS) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Relay listening on ${PORT}`);
 });
-

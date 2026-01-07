@@ -1,0 +1,39 @@
+[
+  {
+    "creative_id": "ABC123456789",
+    "advertiser_name": "Milan Laser Hair Removal",
+    "ad_text": "Get permanent hair removal with our award-winning laser technology. Free consultation!",
+    "headline": "Permanent Hair Removal - Free Consult",
+    "description": "Lifetime guarantee. Licensed professionals. Book today!",
+    "image_url": "https://example.com/ad-image-1.jpg",
+    "landing_page": "https://milanlaser.com/free-consultation",
+    "first_seen": "2024-01-01T00:00:00Z",
+    "last_seen": "2024-01-15T23:59:59Z",
+    "spend": {
+      "min": 1000,
+      "max": 5000,
+      "currency": "USD"
+    },
+    "targeting": {
+      "age_range": "25-54",
+      "gender": "All",
+      "locations": ["United States"]
+    }
+  },
+  {
+    "creative_id": "DEF987654321",
+    "advertiser_name": "Milan Laser Hair Removal",
+    "ad_text": "Limited time offer: Save on laser hair removal packages. Book your free consultation now!",
+    "headline": "Special Offer - Laser Hair Removal",
+    "description": "Award-winning technology. Lifetime guarantee.",
+    "image_url": "https://example.com/ad-image-2.jpg",
+    "landing_page": "https://milanlaser.com/specials",
+    "first_seen": "2024-01-10T00:00:00Z",
+    "last_seen": "2024-01-15T23:59:59Z",
+    "spend": {
+      "min": 500,
+      "max": 2000,
+      "currency": "USD"
+    }
+  }
+]

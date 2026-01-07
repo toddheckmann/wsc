@@ -1,0 +1,49 @@
+[
+  {
+    "id": "123456789012345",
+    "ad_archive_id": "123456789012345",
+    "page_name": "Milan Laser Hair Removal",
+    "ad_creation_time": "2024-01-01T12:00:00+0000",
+    "ad_delivery_stop_time": null,
+    "snapshot": {
+      "body_text": "Ready to say goodbye to unwanted hair? Milan Laser offers permanent hair removal with a lifetime guarantee. Book your free consultation today!",
+      "title": "Permanent Hair Removal",
+      "link_description": "Free consultation. Lifetime guarantee. Licensed medical professionals.",
+      "link_url": "https://milanlaser.com/free-consultation",
+      "images": [
+        "https://example.com/meta-ad-1.jpg"
+      ]
+    },
+    "spend": {
+      "lower_bound": 1000,
+      "upper_bound": 5000
+    },
+    "currency": "USD",
+    "target": {
+      "ages": "25-54",
+      "gender": "All",
+      "regions": ["United States"]
+    }
+  },
+  {
+    "id": "987654321098765",
+    "ad_archive_id": "987654321098765",
+    "page_name": "Milan Laser Hair Removal",
+    "ad_creation_time": "2024-01-05T15:30:00+0000",
+    "snapshot": {
+      "body_text": "New Year, New You! Special pricing on laser hair removal. Safe, effective, permanent results.",
+      "title": "New Year Special",
+      "link_description": "Award-winning laser hair removal technology",
+      "link_url": "https://milanlaser.com/specials",
+      "images": [
+        "https://example.com/meta-ad-2.jpg"
+      ],
+      "videos": []
+    },
+    "spend": {
+      "lower_bound": 500,
+      "upper_bound": 2000
+    },
+    "currency": "USD"
+  }
+]

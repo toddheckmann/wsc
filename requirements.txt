@@ -1,0 +1,24 @@
+# Milan Laser Intelligence - Layer 1 Collector
+# Python 3.11+ required
+
+# Web automation and scraping
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# HTTP requests
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Configuration and CLI
+pyyaml>=6.0
+click>=8.1.0
+
+# Date/time utilities
+python-dateutil>=2.8.0
+
+# Development dependencies (optional)
+# Uncomment for development:
+# pytest>=7.4.0
+# black>=23.0.0
+# mypy>=1.5.0

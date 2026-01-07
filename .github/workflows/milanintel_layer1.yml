@@ -1,0 +1,198 @@
+name: Milan Laser Intelligence - Layer 1 Daily Collection
+
+# This workflow runs the Layer 1 competitive intelligence collector automatically
+# It collects web pages, job listings, and ad creatives from Milan Laser Hair Removal
+
+on:
+  # Run daily at 12:30 UTC (7:30 AM EST / 4:30 AM PST)
+  schedule:
+    - cron: '30 12 * * *'
+
+  # Allow manual triggering from GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  collect:
+    name: Run Layer 1 Collector
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ============================================
+      # STEP 1: Checkout the repository
+      # ============================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ============================================
+      # STEP 2: Set up Python 3.11
+      # ============================================
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      # ============================================
+      # STEP 3: Install Python dependencies
+      # ============================================
+      # Automatically detects requirements.txt or pyproject.toml
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          python -c "import milanintel; print(f'✓ MilanIntel v{milanintel.__version__} installed')"
+
+      # ============================================
+      # STEP 4: Install Playwright browsers
+      # ============================================
+      # Use --with-deps to install system dependencies automatically
+      - name: Install Playwright browsers
+        run: |
+          playwright install --with-deps chromium
+          echo "✓ Playwright chromium browser installed with system dependencies"
+
+      # ============================================
+      # STEP 5: Create configuration file
+      # ============================================
+      # Copy config.example.yaml to config.yaml (not in git)
+      - name: Create configuration file
+        run: |
+          if [ ! -f config.yaml ]; then
+            cp config.example.yaml config.yaml
+            echo "✓ Created config.yaml from config.example.yaml"
+          else
+            echo "✓ config.yaml already exists"
+          fi
+
+      # ============================================
+      # STEP 6: Create necessary directories
+      # ============================================
+      - name: Create data directories
+        run: |
+          mkdir -p data artifacts logs imports/google_ads imports/meta_ads
+          echo "✓ Created data, artifacts, logs, and imports directories"
+
+      # ============================================
+      # STEP 7: Initialize database (idempotent)
+      # ============================================
+      # This command uses CREATE TABLE IF NOT EXISTS - safe to run multiple times
+      - name: Initialize database
+        run: |
+          python -m milanintel init-db --config config.yaml
+          echo "✓ Database initialized (or verified existing)"
+
+      # ============================================
+      # STEP 8: Run the Layer 1 collector
+      # ============================================
+      - name: Run Milan Laser intelligence collector
+        run: |
+          echo "========================================"
+          echo "Starting Layer 1 collection..."
+          echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo "========================================"
+
+          python -m milanintel run --config config.yaml
+
+          echo ""
+          echo "========================================"
+          echo "Collection completed"
+          echo "========================================"
+
+      # ============================================
+      # STEP 9: Display collection summary
+      # ============================================
+      - name: Display collection statistics
+        if: always()
+        run: |
+          echo "Collection Summary:"
+          echo "===================="
+
+          # Show run status from CLI
+          python -m milanintel status --limit 5 || echo "Could not retrieve status"
+
+          # Show disk usage
+          echo ""
+          echo "Artifact sizes:"
+          du -sh artifacts/ data/ logs/ 2>/dev/null || echo "No artifacts yet"
+
+          # Show database record counts
+          if [ -f data/milanintel.db ]; then
+            echo ""
+            echo "Database statistics:"
+            sqlite3 data/milanintel.db "SELECT source, COUNT(*) as count FROM observations GROUP BY source;" 2>/dev/null || echo "Database query failed"
+          fi
+
+      # ============================================
+      # STEP 10: Upload collected artifacts
+      # ============================================
+      # Includes: HTML snapshots, screenshots, parsed JSON
+      - name: Upload collected artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milanintel-artifacts-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: warn
+
+      # ============================================
+      # STEP 11: Upload logs
+      # ============================================
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milanintel-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 90
+          if-no-files-found: warn
+
+      # ============================================
+      # STEP 12: Upload SQLite database
+      # ============================================
+      # The database contains all observations and change detection hashes
+      - name: Upload SQLite database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: milanintel-database-${{ github.run_number }}
+          path: |
+            data/*.db
+            data/milanintel.db
+          retention-days: 90
+          if-no-files-found: warn
+
+      # ============================================
+      # STEP 13: Generate workflow summary
+      # ============================================
+      - name: Generate workflow summary
+        if: always()
+        run: |
+          echo "## Milan Laser Intelligence - Layer 1 Collection" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Number:** ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f data/milanintel.db ]; then
+            echo "### Collection Statistics" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            sqlite3 data/milanintel.db "SELECT source, COUNT(*) as count FROM observations GROUP BY source;" 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "Database query failed" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- Web snapshots and screenshots" >> $GITHUB_STEP_SUMMARY
+          echo "- Job listings and details" >> $GITHUB_STEP_SUMMARY
+          echo "- Ad creatives (if imports available)" >> $GITHUB_STEP_SUMMARY
+          echo "- SQLite database with change detection" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All artifacts are available in the 'Artifacts' section above." >> $GITHUB_STEP_SUMMARY

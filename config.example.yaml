@@ -1,0 +1,97 @@
+# Milan Laser Intelligence - Layer 1 Collector Configuration
+# Copy to config.yaml and customize
+
+competitor:
+  name: "Milan Laser Hair Removal"
+  primary_domain: "milanlaser.com"
+
+collectors:
+  web:
+    enabled: true
+    urls:
+      - url: "https://milanlaser.com/"
+        slug: "homepage"
+      - url: "https://milanlaser.com/careers"
+        slug: "careers"
+      - url: "https://milanlaser.com/locations"
+        slug: "locations"
+      - url: "https://milanlaser.com/specials"
+        slug: "specials"
+    # Playwright options
+    headless: true
+    timeout_ms: 30000
+    viewport_width: 1920
+    viewport_height: 1080
+    rate_limit_seconds: 2.0
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+  jobs:
+    enabled: true
+    careers_url: "https://milanlaser.com/careers"
+    # CSS selectors for parsing (adjust based on actual site)
+    selectors:
+      job_links: "a.job-listing, .career-opportunity a, .job-post a"
+      title: "h1, .job-title, [data-job-title]"
+      location: ".job-location, .location, [data-location]"
+      department: ".job-department, .department"
+      employment_type: ".job-type, .employment-type"
+      posted_date: ".job-posted, .posted-date, time"
+      description: ".job-description, .description, .job-content"
+    rate_limit_seconds: 2.0
+    max_job_pages: 100
+
+  ads:
+    enabled: true
+    platforms:
+      google:
+        enabled: true
+        provider: "manual_export"  # Options: manual_export, api_stub
+        # For manual_export: drop JSON exports into imports/google_ads/
+        import_path: "imports/google_ads/"
+        advertiser_name: "Milan Laser"
+      meta:
+        enabled: true
+        provider: "manual_export"  # Options: manual_export, api_stub
+        # For manual_export: drop JSON exports into imports/meta_ads/
+        import_path: "imports/meta_ads/"
+        page_name: "Milan Laser Hair Removal"
+
+  email:
+    enabled: false  # Set to true when ready to use
+    provider: "imap"  # Only IMAP supported in MVP
+    accounts:
+      - name: "seed_account_1"
+        # Set via environment variables:
+        # MILANINTEL_EMAIL_HOST
+        # MILANINTEL_EMAIL_PORT (default: 993)
+        # MILANINTEL_EMAIL_USERNAME
+        # MILANINTEL_EMAIL_PASSWORD
+        # MILANINTEL_EMAIL_FOLDER (default: INBOX)
+        use_ssl: true
+        filters:
+          from_domains:
+            - "milanlaser.com"
+            - "milanlaserhairremoval.com"
+          subject_keywords:
+            - "milan"
+            - "laser"
+            - "offer"
+            - "special"
+
+storage:
+  database_path: "data/milanintel.db"
+  artifacts_path: "artifacts/"
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_path: "logs/"
+  console: true
+  file: true
+
+retry:
+  max_attempts: 3
+  initial_backoff_seconds: 2.0
+  max_backoff_seconds: 30.0
+  exponential_base: 2.0
+
+user_agent: "MilanIntel/1.0 (Competitive Intelligence Collector)"
